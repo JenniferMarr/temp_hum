@@ -1,44 +1,67 @@
-from grovepi import *
-from grove_rgb_lcd import *
-import time
+from grovepi import*
+from grove_rgb_lcd import*
+from time import sleep
 from math import isnan
-import sqlite3
-from datetime import datetime
-
+import MySQLdb
 
 dht_sensor_port = 7
+dht_sensor_type = 0
+setRGB(0, 255, 0)
 
-conn = sqlite3.connect('sensores.db')
-cursor = conn.cursor()
+try:
+    conn = MySQLdb.connect(db="diego",
+                       host="localhost",
+                       user="Diego2_user",
+                       passwd="1234")
+                       
+     cursor = conn.cursor()
+except Exception as e:
+     print("Error en DB:", e)
+     exit(1)
 
-while True:
-    print("Leyendo sensor...")
-    try:
-        [temp, hum] = dht(dht_sensor_port, 0)  
-        print("Resultado de dht():", [temp, hum])
+try:
+    while True:
+        try:
+           temp_hum = dht(dht_sensor_port, dht_sensor_type)
+             if isinstance(temp_hum, list) and len(temp_hum) == 2:
+                 temp = temp_hum[0]
+                 hum = temp_hum[1]
 
-        if not (isnan(temp) or isnan(hum)):
-            print("Temp =", temp, "°C   Humidity =", hum, "%")
-
-            t = round(temp, 1)
-            h = round(hum, 1)
-
-            setRGB(0, 255, 0)
-            setText("Temp:" + str(t) + "C   " + "Humidity:" + str(h) + "%")
-
-            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            cursor.execute("INSERT INTO lecturas (fecha, temperatura, humedad) VALUES (?, ?, ?)", (fecha, t, h))
-            conn.commit()
-            print("Datos guardados en la base de datos.")
-
+                 if isnan(temp) or isnan(hum):
+                     print("Lectura inválida: NaN")
+                     setText_norefresh("Esperando...\\nSensor sin datos")
+                 else:
+                     print("Temperature= ", temp, "C\\tHumidity= ", hum, "%")
+                     setText_norefresh("Temp: {:.1f}C\\nHumidity: {:.1f}%".format(temp, hum))
+                     query = "INSERT INTO datos (temperatura, humedad) VALUES (%s, %s)"
+           
+                     try:
+                         cursor.execute(query, (float(temp), float(hum)))
+                         conn.commit()
+                     except Exception as e:
+                         print("Error al guardar en BD:", e)
         else:
-            print("Datos no validos (NaN)")
-            setRGB(255, 0, 0)
-            setText("Sensor error")
+            print("Lectura corrupta del sensor")
+            setText_norefresh("Sensor con error")
 
-    except (IOError, TypeError) as e:
-        print("Error:", e)
-        setRGB(255, 0, 0)
-        setText("Read error")
+   except (IOError, TypeError) as e:
+       print("Error:", str(e))
+       setText("")
+   except KeyboardInterrupt:
+       print("Programa suspendido por el usuario.")
+       setText("")
+       break
 
-    time.sleep(2)
+      
+      sleep(2)
+      
+finally:
+    try:
+        cursor.close()
+    except:
+        pass
+        
+        try: 
+            conn.close()
+    except: 
+        pass
